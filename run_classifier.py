@@ -42,7 +42,7 @@ if sys.version_info[0] == 2:
 else:
     import pickle
 
-WEIGHTS_NAME = "gpt.weights"
+WEIGHTS_NAME = "pytorch_model.bin"
 CONFIG_NAME = "config.json"
 
 logger = logging.getLogger(__name__)
@@ -85,10 +85,10 @@ def main():
                         help="The maximum total input sequence length after WordPiece tokenization. \n"
                              "Sequences longer than this will be truncated, and sequences shorter \n"
                              "than this will be padded.")
-    parser.add_argument("--do_train", default=True,
+    parser.add_argument("--do_train",
                         action='store_true',
                         help="Whether to run training.")
-    parser.add_argument("--do_eval", default=False,
+    parser.add_argument("--do_eval",
                         action='store_true',
                         help="Whether to run eval on the dev set.")
     parser.add_argument("--train_batch_size",
@@ -204,7 +204,9 @@ def main():
 
     special_tokens = ['_start_', '_delimiter_', '_classify_']
     tokenizer = OpenAIGPTTokenizer.from_pretrained(args.model_name, special_tokens=special_tokens)
-    model = OpenAIGPTForClassification.from_pretrained(args.model_name, num_labels=num_labels)
+    model = OpenAIGPTForClassification.from_pretrained(args.model_name,
+                                                       num_special_tokens=len(special_tokens),
+                                                       num_labels=num_labels)
     if args.local_rank == 0:
         torch.distributed.barrier()
 
@@ -278,7 +280,7 @@ def main():
         logger.info("  Num steps = %d", num_train_optimization_steps)
 
         model.train()
-        for _ in trange(int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0]):
+        for _ in range(int(args.num_train_epochs)):
             tr_loss = 0
             nb_tr_examples, nb_tr_steps = 0, 0
             for step, batch in enumerate(
@@ -332,14 +334,20 @@ def main():
         tokenizer.save_vocabulary(args.output_dir)
 
         # Load a trained model and vocabulary that you have fine-tuned
-        model = OpenAIGPTForClassification.from_pretrained(args.output_dir, num_labels=num_labels)
-        tokenizer = OpenAIGPTTokenizer.from_pretrained(args.output_dir)
+        model = OpenAIGPTForClassification.from_pretrained(args.output_dir,
+                                                           num_special_tokens=len(special_tokens),
+                                                           num_labels=num_labels)
+
+        special_tokens = ['_start_', '_delimiter_', '_classify_']
+        tokenizer = OpenAIGPTTokenizer.from_pretrained(args.output_dir, special_tokens=special_tokens)
 
         # Good practice: save your training arguments together with the trained model
         output_args_file = os.path.join(args.output_dir, 'training_args.bin')
         torch.save(args, output_args_file)
-    else:
-        model = OpenAIGPTForClassification.from_pretrained(args.model_name, num_labels=num_labels)
+    elif args.do_eval:
+        model = OpenAIGPTForClassification.from_pretrained(args.output_dir,
+                                                           num_special_tokens=len(special_tokens),
+                                                           num_labels=num_labels)
 
     model.to(device)
 
@@ -347,7 +355,7 @@ def main():
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         eval_examples = processor.get_dev_examples(args.data_dir)
         cached_eval_features_file = os.path.join(args.data_dir, 'dev_{0}_{1}_{2}'.format(
-            list(filter(None, args.bert_model.split('/'))).pop(),
+            list(filter(None, args.model_name.split('/'))).pop(),
             str(args.max_seq_length),
             str(task_name)))
         try:
@@ -394,7 +402,7 @@ def main():
             label_ids = label_ids.to(device)
 
             with torch.no_grad():
-                logits = model.forward(input_ids, input_mask, token_type_ids=segment_ids, attention_mask=input_mask)
+                logits = model.forward(input_ids, input_mask, token_type_ids=segment_ids)
 
             # create eval loss and other metric required by the task
             if output_mode == "classification":

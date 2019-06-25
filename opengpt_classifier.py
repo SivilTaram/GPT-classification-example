@@ -79,7 +79,7 @@ class OpenAIGPTForClassification(OpenAIGPTPreTrainedModel):
     def forward(self, input_ids, input_mask, labels=None, token_type_ids=None, position_ids=None):
         hidden_states = self.transformer(input_ids, position_ids, token_type_ids)
         # calculate the position of last element
-        input_mask_sel = input_mask.sum(dim=1)
+        input_mask_sel = input_mask.sum(dim=1) - 1
         input_mask_sel = input_mask_sel.unsqueeze(dim=1).unsqueeze(dim=1).repeat(1, 1, 768)
         # get the last hidden state
         sentence_hidden = hidden_states.gather(index=input_mask_sel, dim=1)
