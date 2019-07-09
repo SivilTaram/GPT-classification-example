@@ -72,7 +72,7 @@ def main():
 
     parser.add_argument("--max_grad_norm",
                         default=1)
-    parser.add_argument('--weight_decay', type=float, default=0.01)
+    parser.add_argument('--weight_decay', type=float, default=0.0)
 
     ## Other parameters
     parser.add_argument("--cache_dir",
@@ -92,7 +92,7 @@ def main():
                         action='store_true',
                         help="Whether to run eval on the dev set.")
     parser.add_argument("--train_batch_size",
-                        default=32,
+                        default=16,
                         type=int,
                         help="Total batch size for training.")
     parser.add_argument("--eval_batch_size",
@@ -112,6 +112,7 @@ def main():
                         type=float,
                         help="Proportion of training to perform linear learning rate warmup for. "
                              "E.g., 0.1 = 10%% of training.")
+    parser.add_argument('--lr_schedule', type=str, default='warmup_linear')
     parser.add_argument("--no_cuda",
                         action='store_true',
                         help="Whether not to use CUDA when available")
@@ -286,10 +287,10 @@ def main():
             for step, batch in enumerate(
                     tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])):
                 batch = tuple(t.to(device) for t in batch)
-                input_ids, input_mask, segment_ids, label_ids = batch
+                input_ids, input_mask, _, label_ids = batch
 
                 # define a new function to compute loss values for both output_modes
-                logits = model.forward(input_ids, input_mask, token_type_ids=segment_ids)
+                logits = model.forward(input_ids, input_mask)
 
                 if output_mode == "classification":
                     loss_fct = CrossEntropyLoss()
@@ -319,8 +320,9 @@ def main():
                         tb_writer.add_scalar('lr', optimizer.get_lr()[0], global_step)
                         tb_writer.add_scalar('loss', loss.item(), global_step)
 
+        tb_writer.close()
+
     ### Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
-    ### Example:
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         # Save a trained model, configuration and tokenizer
         model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
@@ -332,22 +334,13 @@ def main():
         torch.save(model_to_save.state_dict(), output_model_file)
         model_to_save.config.to_json_file(output_config_file)
         tokenizer.save_vocabulary(args.output_dir)
-
-        # Load a trained model and vocabulary that you have fine-tuned
-        model = OpenAIGPTForClassification.from_pretrained(args.output_dir,
-                                                           num_special_tokens=len(special_tokens),
-                                                           num_labels=num_labels)
-
-        special_tokens = ['_start_', '_delimiter_', '_classify_']
-        tokenizer = OpenAIGPTTokenizer.from_pretrained(args.output_dir, special_tokens=special_tokens)
-
         # Good practice: save your training arguments together with the trained model
         output_args_file = os.path.join(args.output_dir, 'training_args.bin')
         torch.save(args, output_args_file)
-    elif args.do_eval:
-        model = OpenAIGPTForClassification.from_pretrained(args.output_dir,
-                                                           num_special_tokens=len(special_tokens),
-                                                           num_labels=num_labels)
+
+    # Load a trained model and vocabulary that you have fine-tuned
+    model = OpenAIGPTForClassification.from_pretrained(args.output_dir,
+                                                       num_labels=num_labels)
 
     model.to(device)
 
@@ -398,11 +391,10 @@ def main():
         for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_dataloader, desc="Evaluating"):
             input_ids = input_ids.to(device)
             input_mask = input_mask.to(device)
-            segment_ids = segment_ids.to(device)
             label_ids = label_ids.to(device)
 
             with torch.no_grad():
-                logits = model.forward(input_ids, input_mask, token_type_ids=segment_ids)
+                logits = model.forward(input_ids, input_mask)
 
             # create eval loss and other metric required by the task
             if output_mode == "classification":

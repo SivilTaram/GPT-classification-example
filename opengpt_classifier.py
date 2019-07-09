@@ -1,6 +1,7 @@
 from pytorch_pretrained_bert.modeling_openai import OpenAIGPTPreTrainedModel, OpenAIGPTLMHead, OpenAIGPTModel
 from pytorch_pretrained_bert import BertForSequenceClassification
 import torch.nn as nn
+import torch
 
 
 class OpenAIGPTForClassification(OpenAIGPTPreTrainedModel):
@@ -68,7 +69,8 @@ class OpenAIGPTForClassification(OpenAIGPTPreTrainedModel):
         super(OpenAIGPTForClassification, self).__init__(config)
         self.transformer = OpenAIGPTModel(config)
         self.classifier = nn.Linear(config.n_embd, num_labels)
-        self.apply(self.init_weights)
+        self.classifier.weight.data.uniform_(-0.1, 0.1)
+        self.classifier.bias.data.zero_()
 
     def set_num_special_tokens(self, num_special_tokens):
         """ Update input and output embeddings with new embedding matrice
@@ -77,6 +79,7 @@ class OpenAIGPTForClassification(OpenAIGPTPreTrainedModel):
         self.transformer.set_num_special_tokens(num_special_tokens)
 
     def forward(self, input_ids, input_mask, labels=None, token_type_ids=None, position_ids=None):
+        # get sum of mask
         hidden_states = self.transformer(input_ids, position_ids, token_type_ids)
         # calculate the position of last element
         input_mask_sel = input_mask.sum(dim=1) - 1

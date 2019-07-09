@@ -429,6 +429,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
         # used as as the "sentence vector". Note that this only makes sense because
         # the entire model is fine-tuned.
         tokens = ["_start_"] + tokens_a + ["_delimiter_"]
+        # tokens = tokens_a
         segment_ids = [0] * len(tokens)
 
         if tokens_b:
