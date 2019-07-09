@@ -1,4 +1,4 @@
-# GPT-classification-finetune
+# GPT-classification-example
 
 An example for fine-tuning GPT model on classification tasks. Concretely, on glue/cola task. The only dependency is the awesome library [pytorch-pretrained-BERT](https://github.com/huggingface/pytorch-pretrained-BERT), and the code is mainly from their repo, thanks to their efforts!
 
